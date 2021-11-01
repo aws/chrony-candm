@@ -1,0 +1,30 @@
+[package]
+name = "chrony-candm"
+version = "0.1.0"
+authors = [ "Daniel Fox Franke <dff@amazon.com>" ]
+edition = "2018"
+description = "Library for communication with Chrony's control & monitoring interface"
+license = "GPL-2.0-only"
+categories = [ "date-and-time" ]
+keywords = [ "chrony" ]
+include = [ "NOTICE", "THIRD-PARTY" ]
+
+[dependencies]
+arrayvec = "0.7"
+bitflags = "1"
+bytes = "1"
+chrony-candm-derive = { path = "../chrony-candm-derive" }
+futures = { version = "0.3", optional = true }
+hex = "0.4"
+libc = "0.2"
+num_enum = "0.5"
+rand = "0.8"
+siphasher = "0.3"
+tokio = { version = "1", features = [ "macros", "net", "rt", "sync", "time" ] , optional = true }
+
+[dev-dependencies]
+chrono = "0.4"
+
+[features]
+default = [ "with_tokio" ]
+with_tokio = [ "futures", "tokio" ]
