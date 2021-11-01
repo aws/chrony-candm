@@ -4,16 +4,17 @@ version = "0.1.0"
 authors = [ "Daniel Fox Franke <dff@amazon.com>" ]
 edition = "2018"
 description = "Library for communication with Chrony's control & monitoring interface"
+repository = "https://github.com/aws/chrony-candm"
 license = "GPL-2.0-only"
 categories = [ "date-and-time" ]
 keywords = [ "chrony" ]
-include = [ "NOTICE", "THIRD-PARTY" ]
+include = [ "src/**", "examples/**", "README.md", "LICENSE", "NOTICE", "THIRD-PARTY" ]
 
 [dependencies]
 arrayvec = "0.7"
 bitflags = "1"
 bytes = "1"
-chrony-candm-derive = { path = "../chrony-candm-derive" }
+chrony-candm-derive = { version = "0.1", path = "../chrony-candm-derive" }
 futures = { version = "0.3", optional = true }
 hex = "0.4"
 libc = "0.2"

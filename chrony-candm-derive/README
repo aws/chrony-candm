@@ -1,0 +1,1 @@
+This crate is an implementation detail of [chrony-candm](https://docs.rs/chrony-candm) and not intended for use by any other crate.

@@ -3,11 +3,12 @@ name = "chrony-candm-derive"
 version = "0.1.0"
 authors = [ "Daniel Fox Franke <dff@amazon.com>" ]
 edition = "2018"
-description = "Library for communication with Chrony's control & monitoring interface"
+description = "Procedural macros for use by chrony-candm"
+repository = "https://github.com/aws/chrony-candm"
 license = "GPL-2.0-only"
 categories = [ "date-and-time" ]
 keywords = [ "chrony" ]
-include = [ "NOTICE" ]
+include = [ "src/**", "LICENSE", "NOTICE", "README" ]
 
 [lib]
 proc-macro = true
