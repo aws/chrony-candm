@@ -128,12 +128,14 @@ struct InflightValue {
     server: ServerAddr,
 }
 
+/// Asynchronously sends requests and receives replies
 #[derive(Debug)]
 pub struct Client {
     task_handle: tokio::task::JoinHandle<()>,
     sender: RequestSender,
 }
 
+/// A future which can be `await`ed to obtain the reply to a sent query
 #[derive(Debug)]
 pub struct ReplyFuture(ReplyReceiver);
 
@@ -156,6 +158,8 @@ impl Future for ReplyFuture {
 }
 
 impl Client {
+    /// Spawns a task to handle sending of requests and receiving of replies, and returns a `Client`
+    /// that communicates with this task.
     pub fn spawn(handle: &tokio::runtime::Handle, options: crate::net::ClientOptions) -> Client {
         let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
         let task_handle = handle.spawn(client_task(options, receiver));
@@ -165,6 +169,18 @@ impl Client {
         }
     }
 
+    /// Sends a request to the given server, and returns a future which can be `await`ed to obtain the reply.
+    ///
+    /// Note that this is *not* an async function; it is a synchronous, non-blocking function which returns a future. Even
+    /// if you don't immediately await the returned future, the request will still immediately be dispatched
+    /// to the task which was spawned to service this client, which will immediately form it into a packet
+    /// and send it.
+    ///
+    /// The type of the `server` parameter is more restrictive than that of this method's blocking counterpart
+    /// [crate::net::blocking_query] because converting some implementations of `ToSocketAddrs` into a `SocketAddr` can
+    /// involve blocking on a DNS lookup, which here would be unacceptable. If you're communicating with localhost,
+    /// can call this method with `LOCAL_SERVER_ADDR.into()`. If you're communicating with a remote server,
+    /// you'll need to handle the DNS lookup yourself.
     pub fn query(&self, request: RequestBody, server: SocketAddr) -> ReplyFuture {
         let mapped_server = match server {
             SocketAddr::V4(v4) => SocketAddrV6::new(v4.ip().to_ipv6_mapped(), v4.port(), 0, 0),
@@ -189,6 +205,7 @@ impl Client {
         ReplyFuture(receiver)
     }
 
+    /// Sends a request to the local Chrony server via its UNIX domain socket, and returns a future which can be `await`ed to obtain the reply.
     #[cfg(unix)]
     pub fn query_uds(&self, request: RequestBody) -> ReplyFuture {
         let (sender, receiver) = tokio::sync::oneshot::channel();

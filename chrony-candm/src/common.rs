@@ -3,6 +3,8 @@
 // and Miroslav Lichvar 2009, 2012-2020
 // SPDX-License-Identifier: GPL-2.0-only
 
+//! Data structures occurring both in requests and in replies
+
 use bitflags::bitflags;
 use bytes::{Buf, BufMut};
 use std::convert::From;
@@ -272,7 +274,7 @@ impl From<f64> for ChronyFloat {
             coef = ((-coef as u32) << FLOAT_EXP_BITS >> FLOAT_EXP_BITS) as i32;
         }
 
-        ChronyFloat((exp as u32) << FLOAT_EXP_BITS | coef as u32)
+        ChronyFloat((exp as u32) << FLOAT_COEF_BITS | coef as u32)
     }
 }
 
