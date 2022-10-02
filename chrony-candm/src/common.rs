@@ -397,7 +397,7 @@ impl ChronySerialize for ChronyAddr {
 bitflags! {
     /// Flags associated with a time source
     #[derive(ChronySerialize)]
-    pub struct SourceFlags : u32 {
+    pub struct SourceFlags : u16 {
         const ONLINE = 0x1;
         const AUTOOFFLINE = 0x2;
         const IBURST = 0x4;
