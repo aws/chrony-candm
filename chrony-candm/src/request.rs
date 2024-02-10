@@ -164,6 +164,10 @@ pub struct NtpSource {
     pub max_delay_dev_ratio: ChronyFloat,
     pub min_delay: ChronyFloat,
     pub asymmetry: ChronyFloat,
+    // In the chrony sources, `flags` is 32 bits in requests and 16 bits in replies.
+    // So that we can use the same data type in both messages, we make it 16 bits
+    // everywhere and treat the two unused high bytes in the request as padding.
+    #[pad = 2]
     pub offset: ChronyFloat,
     pub flags: SourceFlags,
     pub filter_length: i32,
