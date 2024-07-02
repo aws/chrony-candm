@@ -378,7 +378,7 @@ impl RequestBody {
             Self::Smoothing => reply::Smoothing::length(),
             Self::SmoothTime(_) => 0,
             Self::Refresh => 0,
-            Self::ServerStats => reply::ServerStats::length(),
+            Self::ServerStats => reply::ServerStats4::length(),
             Self::Local2(_) => 0,
             Self::NtpData(_) => reply::NtpData::length(),
             Self::Shutdown => 0,

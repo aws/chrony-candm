@@ -201,6 +201,28 @@ pub struct ServerStats {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, ChronySerialize)]
+pub struct ServerStats4 {
+    pub ntp_hits: u64,
+    pub nke_hits: u64,
+    pub cmd_hits: u64,
+    pub ntp_drops: u64,
+    pub nke_drops: u64,
+    pub cmd_drops: u64,
+    pub log_drops: u64,
+    pub ntp_auth_hits: u64,
+    pub ntp_interleaved_hits: u64,
+    pub ntp_timestamps: u64,
+    pub ntp_span_seconds: u64,
+    pub ntp_daemon_rx_timestamps: u64,
+    pub ntp_daemon_tx_timestamps: u64,
+    pub ntp_kernel_rx_timestamps: u64,
+    pub ntp_kernel_tx_timestamps: u64,
+    pub ntp_hw_rx_timestamps: u64,
+    pub ntp_hw_tx_timestamps: u64,
+    reserved: [u64; 4],
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, ChronySerialize)]
 pub struct ManualListSample {
     pub when: SystemTime,
     pub slewed_offset: ChronyFloat,
@@ -377,6 +399,8 @@ pub enum ReplyBody {
     ClientAccessesByIndex3(ClientAccessesByIndex),
     ServerStats2(ServerStats),
     SelectData(SelectData),
+    #[cmd = 25]
+    ServerStats4(ServerStats4),
 }
 
 /// A reply from Chrony
