@@ -8,6 +8,7 @@ use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::ops::{Deref, DerefMut};
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -75,16 +76,25 @@ impl Drop for UnixDatagramClient {
 
 #[cfg(unix)]
 impl UnixDatagramClient {
-    async fn new() -> std::io::Result<UnixDatagramClient> {
+    async fn new<P: AsRef<Path>>(chrony_sock: P) -> std::io::Result<UnixDatagramClient> {
+        let socket_dir = Self::client_socket_dir()?;
         let id: [u8; 16] = rand::random();
-        let mut path = b"/var/run/chrony/client-000102030405060708090a0b0c0d0e0f.sock".clone();
-        hex::encode_to_slice(id, &mut path[23..55]).unwrap();
-        let path_str = OsStr::from_bytes(&path);
-        let sock = UnixDatagram::bind(path_str)?;
+        let mut path_part = b"client-000102030405060708090a0b0c0d0e0f.sock".clone();
+        hex::encode_to_slice(id, &mut path_part[0..32]).unwrap();
+        let path_str = OsStr::from_bytes(&path_part);
+        let path_buf = socket_dir.join(path_str);
+
+        let sock = UnixDatagram::bind(&path_buf)?;
         let client = UnixDatagramClient(sock);
-        std::fs::set_permissions(path_str, Permissions::from_mode(0o777))?;
-        client.connect("/var/run/chrony/chronyd.sock")?;
+        std::fs::set_permissions(&path_buf, Permissions::from_mode(0o777))?;
+        client.connect(chrony_sock)?;
         Ok(client)
+    }
+
+    fn client_socket_dir() -> std::io::Result<PathBuf> {
+        let tempdir = tempfile::tempdir()?;
+
+        Ok(tempdir.into_path())
     }
 }
 
@@ -92,7 +102,7 @@ impl UnixDatagramClient {
 enum ServerAddr {
     Udp(SocketAddrV6),
     #[cfg(unix)]
-    Unix,
+    Unix(PathBuf),
 }
 
 type ReplySender = tokio::sync::oneshot::Sender<std::io::Result<Reply>>;
@@ -131,6 +141,7 @@ struct InflightValue {
 /// Asynchronously sends requests and receives replies
 #[derive(Debug)]
 pub struct Client {
+    #[allow(dead_code)] //
     task_handle: tokio::task::JoinHandle<()>,
     sender: RequestSender,
 }
@@ -205,15 +216,22 @@ impl Client {
         ReplyFuture(receiver)
     }
 
-    /// Sends a request to the local Chrony server via its UNIX domain socket, and returns a future which can be `await`ed to obtain the reply.
+    /// Sends a request to the local Chrony server via its UNIX domain socket, and returns a future which can be `await`ed to obtain the reply against the default UDS path.
     #[cfg(unix)]
     pub fn query_uds(&self, request: RequestBody) -> ReplyFuture {
+        use crate::DEFAULT_UDS_PATH;
+        self.query_uds_named(request, DEFAULT_UDS_PATH)
+    }
+
+    /// Sends a request to the local Chrony server via a UNIX domain socket, and returns a future which can be `await`ed to obtain the reply against a custom defined UDS path.
+    #[cfg(unix)]
+    pub fn query_uds_named<P: AsRef<Path>>(&self, request: RequestBody, socket: P) -> ReplyFuture {
         let (sender, receiver) = tokio::sync::oneshot::channel();
 
         if let Err(SendError(request_meta)) = self.sender.send(RequestMeta {
             body: request,
             reply_sender: sender,
-            server: ServerAddr::Unix,
+            server: ServerAddr::Unix(socket.as_ref().to_path_buf()),
         }) {
             request_meta
                 .reply_sender
@@ -252,7 +270,7 @@ async fn client_task(options: ClientOptions, mut receiver: RequestReceiver) {
     let mut udp_buf = [0u8; 1500];
 
     #[cfg(unix)]
-    let uds_init = || UnixDatagramClient::new();
+    let uds_init = |path: PathBuf| UnixDatagramClient::new(path);
     #[cfg(unix)]
     let uds_cell: OnceCell<UnixDatagramClient> = OnceCell::new();
     #[cfg(unix)]
@@ -295,7 +313,7 @@ async fn client_task(options: ClientOptions, mut receiver: RequestReceiver) {
                                 .await
                         }
                         #[cfg(unix)]
-                        ServerAddr::Unix => {
+                        ServerAddr::Unix(_) => {
                             uds_cell
                                 .get()
                                 .unwrap()
@@ -424,7 +442,7 @@ async fn client_task(options: ClientOptions, mut receiver: RequestReceiver) {
                     server_key: match request_meta.server {
                         ServerAddr::Udp(addr) => ServerKey::Udp(addr.into()),
                         #[cfg(unix)]
-                        ServerAddr::Unix => ServerKey::Unix,
+                        ServerAddr::Unix(_) => ServerKey::Unix,
                     },
                     sequence: obfuscated_sequence,
                 };
@@ -452,7 +470,7 @@ async fn client_task(options: ClientOptions, mut receiver: RequestReceiver) {
                         }
                     },
                     #[cfg(unix)]
-                    ServerAddr::Unix => match uds_cell.get_or_try_init(uds_init).await {
+                    ServerAddr::Unix(ref path) => match uds_cell.get_or_try_init(|| uds_init(path.to_path_buf())).await {
                         Ok(uds) => {
                             if let Err(e) = uds.send(inflight_val.request.as_ref()).await {
                                 let _ = inflight_val.reply_sender.send(Err(e));
