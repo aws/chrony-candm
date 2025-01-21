@@ -11,6 +11,7 @@ use std::ffi::OsStr;
 use std::fs::Permissions;
 use std::net::Ipv6Addr;
 use std::ops::{Deref, DerefMut};
+use std::path::Path;
 use std::time::Duration;
 
 #[cfg(unix)]
@@ -21,6 +22,9 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 
 pub const DEFAULT_PORT: u16 = 323;
+
+#[cfg(unix)]
+pub const DEFAULT_UDS_PATH: &str = "/var/run/chrony/chronyd.sock";
 
 /// Options for configuring a Chrony client
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -115,7 +119,7 @@ impl Drop for UnixDatagramClient {
 
 #[cfg(unix)]
 impl UnixDatagramClient {
-    fn new() -> std::io::Result<UnixDatagramClient> {
+    fn new<P: AsRef<Path>>(chrony_sock: P) -> std::io::Result<UnixDatagramClient> {
         let id: [u8; 16] = rand::random();
         let mut path = b"/var/run/chrony/client-000102030405060708090a0b0c0d0e0f.sock".clone();
         hex::encode_to_slice(id, &mut path[23..55]).unwrap();
@@ -123,7 +127,7 @@ impl UnixDatagramClient {
         let sock = UnixDatagram::bind(path_str)?;
         let client = UnixDatagramClient(sock);
         std::fs::set_permissions(path_str, Permissions::from_mode(0o777))?;
-        client.connect("/var/run/chrony/chronyd.sock")?;
+        client.connect(chrony_sock)?;
         Ok(client)
     }
 }
@@ -191,13 +195,23 @@ pub fn blocking_query<Server: std::net::ToSocketAddrs>(
     blocking_query_loop(&sock, request_body, options)
 }
 
-/// Sends a request to a server via a domain socket and waits for a reply
+/// Sends a request to a server via a domain socket and waits for a reply against the default UDS path
 #[cfg(unix)]
 pub fn blocking_query_uds(
     request_body: RequestBody,
     options: ClientOptions
 ) -> std::io::Result<Reply> {
-    let sock = UnixDatagramClient::new()?;
+    blocking_query_uds_named(request_body, options, DEFAULT_UDS_PATH)
+}
+
+/// Sends a request to a server via a domain socket and waits for a reply against a custom defined UDS path
+#[cfg(unix)]
+pub fn blocking_query_uds_named<P: AsRef<Path>>(
+    request_body: RequestBody,
+    options: ClientOptions,
+    socket: P,
+) -> std::io::Result<Reply> {
+    let sock = UnixDatagramClient::new(socket)?;
     sock.set_read_timeout(Some(options.timeout))?;
     blocking_query_loop(sock.as_ref(), request_body, options)
 }
