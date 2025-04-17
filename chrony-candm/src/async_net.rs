@@ -19,7 +19,7 @@ use tokio::time::Instant;
 
 use crate::reply::Reply;
 use crate::request::{Request, RequestBody};
-use crate::ClientOptions;
+use crate::net::ClientOptions;
 
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
@@ -30,7 +30,7 @@ use tokio::net::UnixDatagram;
 
 #[cfg(unix)]
 #[derive(Debug)]
-struct UnixDatagramClient(UnixDatagram);
+pub struct UnixDatagramClient(UnixDatagram);
 
 #[cfg(unix)]
 impl AsRef<UnixDatagram> for UnixDatagramClient {
@@ -129,6 +129,7 @@ struct InflightValue {
 }
 
 /// Asynchronously sends requests and receives replies
+#[deprecated = "Persistent client overly complicates retry logic"]
 #[derive(Debug)]
 pub struct Client {
     task_handle: tokio::task::JoinHandle<()>,
@@ -517,4 +518,55 @@ async fn client_task(options: ClientOptions, mut receiver: RequestReceiver) {
             }
         }
     }
+}
+
+/// Query chronyd using a Unix Domain Socket
+/// 
+/// Creates a unix domain socket client, sends a request to a server and waits for the response
+/// This has retry logic based off [`ClientOptions`]
+#[cfg(unix)]
+pub async fn query_uds(
+    request: RequestBody,
+    options: ClientOptions,
+) -> std::io::Result<Reply> {
+    use bytes::BytesMut;
+
+    let client = UnixDatagramClient::new().await?;
+
+    let request = Request {
+        sequence: rand::random(),
+        attempt: 0,
+        body: request,
+    };
+
+    let mut send_buf = BytesMut::with_capacity(request.length());
+    request.serialize(&mut send_buf);
+    let mut recv_buf = [0; 1500];
+    let mut attempt = 0;
+
+    while attempt < options.n_tries {
+        client.0.send(&send_buf).await?;
+        let Ok(io_result) = tokio::time::timeout(options.timeout, client.0.recv(&mut recv_buf)).await else {
+            attempt += 1;
+            continue;
+        };
+        let size = io_result?;
+        let mut msg = &recv_buf[..size];
+        let reply = Reply::deserialize(&mut msg).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+        })?;
+        if reply.sequence == request.sequence {
+            return Ok(reply);
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Sequence number mismatch",
+            ));
+        }
+    }
+    // timed out
+    Err(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        format!("Timed out after {n} retries", n = options.n_tries),
+    ))
 }
