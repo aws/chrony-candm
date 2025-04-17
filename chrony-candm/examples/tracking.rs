@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 use chrono::Utc;
-use chrony_candm::Client;
+use chrony_candm::{query_uds, Client, ClientOptions};
 use chrony_candm::{reply::ReplyBody, request::RequestBody};
 use std::{
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
@@ -10,17 +10,42 @@ use std::{
 };
 use tokio::runtime::Handle;
 
+use clap::{Parser, ValueEnum};
+
+#[derive(Parser, Debug)]
+struct Args {
+    /// type of connection to use
+    client_type: ClientType,
+}
+
+#[derive(Debug, ValueEnum, Clone, Copy)]
+enum ClientType {
+    Uds,
+    UdpV6,
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    let args = Args::parse();
     let request_body = RequestBody::Tracking;
-    let client = Client::spawn(&Handle::current(), Default::default());
-    let server_addr = SocketAddr::V6(SocketAddrV6::new(
-        Ipv6Addr::from_str("::1").unwrap(),
-        323,
-        0,
-        0,
-    ));
-    let result = client.query(request_body, server_addr).await;
+
+    let result = match args.client_type {
+        ClientType::Uds => {
+            println!("Using UDS");
+            query_uds(request_body, ClientOptions::default()).await
+        }
+        ClientType::UdpV6 => {
+            println!("Using UDPv6");
+            let client = Client::spawn(&Handle::current(), Default::default());
+            let server_addr = SocketAddr::V6(SocketAddrV6::new(
+                Ipv6Addr::from_str("::1").unwrap(),
+                323,
+                0,
+                0,
+            ));
+            client.query(request_body, server_addr).await
+        }
+    };
 
     match result {
         Err(e) => println!("{:?}", e),
