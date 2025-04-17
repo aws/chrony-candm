@@ -17,9 +17,9 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::OnceCell;
 use tokio::time::Instant;
 
+use crate::net::ClientOptions;
 use crate::reply::Reply;
 use crate::request::{Request, RequestBody};
-use crate::net::ClientOptions;
 
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
@@ -521,14 +521,11 @@ async fn client_task(options: ClientOptions, mut receiver: RequestReceiver) {
 }
 
 /// Query chronyd using a Unix Domain Socket
-/// 
+///
 /// Creates a unix domain socket client, sends a request to a server and waits for the response
 /// This has retry logic based off [`ClientOptions`]
 #[cfg(unix)]
-pub async fn query_uds(
-    request: RequestBody,
-    options: ClientOptions,
-) -> std::io::Result<Reply> {
+pub async fn query_uds(request: RequestBody, options: ClientOptions) -> std::io::Result<Reply> {
     use bytes::BytesMut;
 
     let client = UnixDatagramClient::new().await?;
@@ -546,15 +543,16 @@ pub async fn query_uds(
 
     while attempt < options.n_tries {
         client.0.send(&send_buf).await?;
-        let Ok(io_result) = tokio::time::timeout(options.timeout, client.0.recv(&mut recv_buf)).await else {
+        let Ok(io_result) =
+            tokio::time::timeout(options.timeout, client.0.recv(&mut recv_buf)).await
+        else {
             attempt += 1;
             continue;
         };
         let size = io_result?;
         let mut msg = &recv_buf[..size];
-        let reply = Reply::deserialize(&mut msg).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
+        let reply = Reply::deserialize(&mut msg)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         if reply.sequence == request.sequence {
             return Ok(reply);
         } else {
