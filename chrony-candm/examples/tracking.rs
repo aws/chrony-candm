@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 use chrono::Utc;
-use chrony_candm::{query_uds, Client, ClientOptions};
+use chrony_candm::{query_uds, Client, ClientOptions, UnixDatagramClient};
 use chrony_candm::{reply::ReplyBody, request::RequestBody};
 use std::{
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
@@ -29,10 +29,11 @@ async fn main() {
     let args = Args::parse();
     let request_body = RequestBody::Tracking;
 
-    let result = match args.client_type {
+    let reply = match args.client_type {
         ClientType::Uds => {
             println!("Using UDS");
-            query_uds(request_body, ClientOptions::default()).await
+            let mut client = UnixDatagramClient::new().await.unwrap();
+            client.query(request_body, ClientOptions::default()).await.unwrap()
         }
         ClientType::UdpV6 => {
             println!("Using UDPv6");
@@ -43,61 +44,56 @@ async fn main() {
                 0,
                 0,
             ));
-            client.query(request_body, server_addr).await
+            client.query(request_body, server_addr).await.unwrap()
         }
     };
 
-    match result {
-        Err(e) => println!("{:?}", e),
-        Ok(reply) => {
-            println!("Status: {:?}", reply.status);
-            if let ReplyBody::Tracking(body) = reply.body {
-                println!("Reference ID: {}", body.ref_id);
-                println!("Source IP: {}", body.ip_addr);
-                println!("Stratum: {}", body.stratum);
-                println!(
-                    "Ref time: {}",
-                    chrono::DateTime::<Utc>::from(body.ref_time)
-                        .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
-                );
-                let current_correction: f64 = body.current_correction.into();
-                println!(
-                    "System time: {:.9} seconds {} of NTP time",
-                    current_correction.abs(),
-                    if current_correction.is_sign_negative() {
-                        "fast"
-                    } else {
-                        "slow"
-                    }
-                );
-                println!("Last offset: {:+.9} seconds", body.last_offset);
-                println!("RMS offset: {:.9} seconds", body.rms_offset);
-                let freq_ppm: f64 = body.freq_ppm.into();
-                println!(
-                    "Frequency: {:.3} ppm {}",
-                    freq_ppm.abs(),
-                    if freq_ppm.is_sign_negative() {
-                        "slow"
-                    } else {
-                        "fast"
-                    }
-                );
-                println!("Residual freq: {:+.3} ppm", body.resid_freq_ppm);
-                println!("Skew: {:.3} ppm", body.skew_ppm);
-                println!("Root delay: {:.9} seconds", body.root_delay);
-                println!("Root dispersion: {:.9} seconds", body.root_dispersion);
-                println!("Update interval: {:.1} seconds", body.last_update_interval);
-                println!(
-                    "Leap status: {}",
-                    match body.leap_status {
-                        0 => "Normal",
-                        1 => "Insert",
-                        2 => "Delete",
-                        3 => "Unsynchronized",
-                        _ => "Invalid",
-                    }
-                )
+    println!("Status: {:?}", reply.status);
+    if let ReplyBody::Tracking(body) = reply.body {
+        println!("Reference ID: {}", body.ref_id);
+        println!("Source IP: {}", body.ip_addr);
+        println!("Stratum: {}", body.stratum);
+        println!(
+            "Ref time: {}",
+            chrono::DateTime::<Utc>::from(body.ref_time)
+                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
+        );
+        let current_correction: f64 = body.current_correction.into();
+        println!(
+            "System time: {:.9} seconds {} of NTP time",
+            current_correction.abs(),
+            if current_correction.is_sign_negative() {
+                "fast"
+            } else {
+                "slow"
             }
-        }
+        );
+        println!("Last offset: {:+.9} seconds", body.last_offset);
+        println!("RMS offset: {:.9} seconds", body.rms_offset);
+        let freq_ppm: f64 = body.freq_ppm.into();
+        println!(
+            "Frequency: {:.3} ppm {}",
+            freq_ppm.abs(),
+            if freq_ppm.is_sign_negative() {
+                "slow"
+            } else {
+                "fast"
+            }
+        );
+        println!("Residual freq: {:+.3} ppm", body.resid_freq_ppm);
+        println!("Skew: {:.3} ppm", body.skew_ppm);
+        println!("Root delay: {:.9} seconds", body.root_delay);
+        println!("Root dispersion: {:.9} seconds", body.root_dispersion);
+        println!("Update interval: {:.1} seconds", body.last_update_interval);
+        println!(
+            "Leap status: {}",
+            match body.leap_status {
+                0 => "Normal",
+                1 => "Insert",
+                2 => "Delete",
+                3 => "Unsynchronized",
+                _ => "Invalid",
+            }
+        )
     }
 }

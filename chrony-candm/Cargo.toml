@@ -1,6 +1,6 @@
 [package]
 name = "chrony-candm"
-version = "0.1.3"
+version = "0.1.4"
 authors = [ "Daniel Fox Franke <dff@amazon.com>" ]
 edition = "2018"
 description = "Library for communication with Chrony's control & monitoring interface"
@@ -21,6 +21,7 @@ libc = "0.2"
 num_enum = "0.5"
 rand = "0.8"
 siphasher = "0.3"
+thiserror = "2"
 tokio = { version = "1", features = [ "macros", "net", "rt", "sync", "time" ] , optional = true }
 
 [dev-dependencies]
