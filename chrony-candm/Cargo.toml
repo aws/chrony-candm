@@ -1,6 +1,6 @@
 [package]
 name = "chrony-candm"
-version = "0.1.4"
+version = "0.1.3"
 authors = [ "Daniel Fox Franke <dff@amazon.com>" ]
 edition = "2018"
 description = "Library for communication with Chrony's control & monitoring interface"
