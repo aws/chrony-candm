@@ -15,6 +15,36 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrony_candm_derive::ChronySerialize;
 
+#[derive(Debug, thiserror::Error)]
+pub enum QueryError {
+    #[error("Unable to send request")]
+    Send(#[source] std::io::Error),
+    #[error("Unable to receive reply")]
+    Recv(#[source] std::io::Error),
+    #[error("Failed deserialization")]
+    Deserialization(#[from] DeserializationError),
+    #[error("Sequence number mismatch. Expected {expected}, got {received}")]
+    SequenceMismatch { expected: u32, received: u32 },
+    #[error("Timeout")]
+    Timeout,
+}
+
+impl QueryError {
+    // Convert to IO error for backwards compatibility
+    pub(crate) fn into_io(self) -> std::io::Error {
+        match self {
+            QueryError::Send(e) => e,
+            QueryError::Recv(e) => e,
+            QueryError::Deserialization(e) => std::io::Error::new(std::io::ErrorKind::InvalidData, e),
+            QueryError::SequenceMismatch { .. } => std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                String::from("Sequence number mismatch"),
+            ),
+            QueryError::Timeout => std::io::Error::new(std::io::ErrorKind::TimedOut, "Timed out"),
+        }
+    }
+}
+
 ///Error returned when attempting to deserialize a malformed message
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct DeserializationError(Option<&'static str>);

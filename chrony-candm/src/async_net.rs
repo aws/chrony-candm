@@ -17,9 +17,10 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::OnceCell;
 use tokio::time::Instant;
 
+use crate::common::QueryError;
+use crate::net::ClientOptions;
 use crate::reply::Reply;
 use crate::request::{Request, RequestBody};
-use crate::ClientOptions;
 
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
@@ -30,7 +31,7 @@ use tokio::net::UnixDatagram;
 
 #[cfg(unix)]
 #[derive(Debug)]
-struct UnixDatagramClient(UnixDatagram);
+pub struct UnixDatagramClient(UnixDatagram);
 
 #[cfg(unix)]
 impl AsRef<UnixDatagram> for UnixDatagramClient {
@@ -75,7 +76,7 @@ impl Drop for UnixDatagramClient {
 
 #[cfg(unix)]
 impl UnixDatagramClient {
-    async fn new() -> std::io::Result<UnixDatagramClient> {
+    pub async fn new() -> std::io::Result<UnixDatagramClient> {
         let id: [u8; 16] = rand::random();
         let mut path = b"/var/run/chrony/client-000102030405060708090a0b0c0d0e0f.sock".clone();
         hex::encode_to_slice(id, &mut path[23..55]).unwrap();
@@ -85,6 +86,55 @@ impl UnixDatagramClient {
         std::fs::set_permissions(path_str, Permissions::from_mode(0o777))?;
         client.connect("/var/run/chrony/chronyd.sock")?;
         Ok(client)
+    }
+
+    /// Query chronyd using this UnixDomainSocket
+    ///
+    /// Sends a request to a server and waits for the response
+    ///
+    /// # Errors
+    /// See [`QueryError`] for more info
+    ///
+    /// # NOTE
+    /// This function takes `&mut self` unnecessarily to prevent the footgun of making concurrent requests to `chronyd`
+    pub async fn query(
+        &mut self,
+        request: RequestBody,
+        options: ClientOptions,
+    ) -> Result<Reply, QueryError> {
+        use bytes::BytesMut;
+        let request = Request {
+            sequence: rand::random(),
+            attempt: 0,
+            body: request,
+        };
+
+        let mut send_buf = BytesMut::with_capacity(request.length());
+        request.serialize(&mut send_buf);
+        let mut recv_buf = [0; 1500];
+        let mut attempt = 0;
+
+        while attempt < options.n_tries {
+            self.0.send(&send_buf).await.map_err(QueryError::Send)?;
+            let Ok(io_result) =
+                tokio::time::timeout(options.timeout, self.0.recv(&mut recv_buf)).await
+            else {
+                attempt += 1;
+                continue;
+            };
+            let size = io_result.map_err(QueryError::Recv)?;
+            let mut msg = &recv_buf[..size];
+            let reply = Reply::deserialize(&mut msg)?;
+            if reply.sequence == request.sequence {
+                return Ok(reply);
+            } else {
+                return Err(QueryError::SequenceMismatch {
+                    expected: request.sequence,
+                    received: reply.sequence,
+                });
+            }
+        }
+        Err(QueryError::Timeout)
     }
 }
 
@@ -129,6 +179,7 @@ struct InflightValue {
 }
 
 /// Asynchronously sends requests and receives replies
+#[deprecated = "Persistent client overly complicates retry logic"]
 #[derive(Debug)]
 pub struct Client {
     task_handle: tokio::task::JoinHandle<()>,
@@ -517,4 +568,14 @@ async fn client_task(options: ClientOptions, mut receiver: RequestReceiver) {
             }
         }
     }
+}
+
+/// Query chronyd using a Unix Domain Socket
+///
+/// Creates a unix domain socket client, sends a request to a server and waits for the response
+/// This has retry logic based off [`ClientOptions`]
+#[cfg(unix)]
+pub async fn query_uds(request: RequestBody, options: ClientOptions) -> std::io::Result<Reply> {
+    let mut client = UnixDatagramClient::new().await?;
+    client.query(request, options).await.map_err(QueryError::into_io)
 }

@@ -14,11 +14,11 @@ use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
 #[cfg(unix)]
-use std::os::unix::net::UnixDatagram;
-#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::net::UnixDatagram;
 
 pub const DEFAULT_PORT: u16 = 323;
 
@@ -84,7 +84,6 @@ impl AsMut<UnixDatagram> for UnixDatagramClient {
         &mut self.0
     }
 }
-
 
 #[cfg(unix)]
 impl Deref for UnixDatagramClient {
@@ -164,7 +163,9 @@ fn blocking_query_loop<Sock: DgramSocket>(
                 }
             }
             Err(e) => {
-                if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::WouldBlock {
+                if e.kind() == std::io::ErrorKind::TimedOut
+                    || e.kind() == std::io::ErrorKind::WouldBlock
+                {
                     attempt += 1;
                     if attempt == options.n_tries {
                         return Err(e);
@@ -195,7 +196,7 @@ pub fn blocking_query<Server: std::net::ToSocketAddrs>(
 #[cfg(unix)]
 pub fn blocking_query_uds(
     request_body: RequestBody,
-    options: ClientOptions
+    options: ClientOptions,
 ) -> std::io::Result<Reply> {
     let sock = UnixDatagramClient::new()?;
     sock.set_read_timeout(Some(options.timeout))?;
